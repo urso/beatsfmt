@@ -25,12 +25,7 @@ type settings struct {
 	list      bool
 }
 
-type formatter func(settings, string, []byte) ([]byte, error)
-
-var formatters = []formatter{
-	licenseHeader,
-	formatSource,
-}
+type formatter func(string, []byte) ([]byte, error)
 
 var ESLicenseHeader = []string{
 	`// Licensed to Elasticsearch B.V. under one or more contributor`,
@@ -49,14 +44,6 @@ var ESLicenseHeader = []string{
 	`// KIND, either express or implied.  See the License for the`,
 	`// specific language governing permissions and limitations`,
 	`// under the License.`,
-}
-var headerBytes []byte
-
-func init() {
-	for _, line := range ESLicenseHeader {
-		headerBytes = append(headerBytes, []byte(line)...)
-		headerBytes = append(headerBytes, []byte("\n")...)
-	}
 }
 
 func usage() {
@@ -115,6 +102,11 @@ func processFile(
 	out io.Writer,
 	stdin bool,
 ) error {
+	var formatters = []formatter{
+		licenseHeader(ESLicenseHeader),
+		formatSource(settings.allErrors),
+	}
+
 	if in == nil {
 		f, err := os.Open(filename)
 		if err != nil {
@@ -134,7 +126,7 @@ func processFile(
 		target = filepath.Join(dir, filepath.Base(filename))
 	}
 
-	res, err := applyFormatters(settings, target, src)
+	res, err := applyFormatters(formatters, target, src)
 	if err != nil {
 		return err
 	}
@@ -188,11 +180,11 @@ func visitFile(settings settings) func(string, os.FileInfo, error) error {
 	}
 }
 
-func applyFormatters(settings settings, filename string, src []byte) ([]byte, error) {
+func applyFormatters(formatters []formatter, filename string, src []byte) ([]byte, error) {
 	contents := src
 	for _, f := range formatters {
 		var err error
-		contents, err = f(settings, filename, contents)
+		contents, err = f(filename, contents)
 		if err != nil {
 			return nil, err
 		}
@@ -201,24 +193,34 @@ func applyFormatters(settings settings, filename string, src []byte) ([]byte, er
 	return contents, nil
 }
 
-func licenseHeader(settings settings, filename string, src []byte) ([]byte, error) {
-	buf := bytes.NewBuffer(src)
-	if licensing.ContainsHeader(buf, ESLicenseHeader) {
-		return src, nil
+func licenseHeader(header []string) func(string, []byte) ([]byte, error) {
+	var headerBytes []byte
+	for _, line := range header {
+		headerBytes = append(headerBytes, []byte(line)...)
+		headerBytes = append(headerBytes, []byte("\n")...)
 	}
 
-	// Header is the licenser that all of the files in the repository must have.
-	return licensing.RewriteWithHeader(src, headerBytes), nil
+	return func(filename string, src []byte) ([]byte, error) {
+		buf := bytes.NewBuffer(src)
+		if licensing.ContainsHeader(buf, header) {
+			return src, nil
+		}
+
+		// Header is the licenser that all of the files in the repository must have.
+		return licensing.RewriteWithHeader(src, headerBytes), nil
+	}
 }
 
-func formatSource(settings settings, filename string, src []byte) ([]byte, error) {
-	return imports.Process(filename, src, &imports.Options{
-		TabWidth:  8,
-		AllErrors: settings.allErrors,
-		TabIndent: true,
-		Comments:  true,
-		Fragment:  true,
-	})
+func formatSource(allErrors bool) func(string, []byte) ([]byte, error) {
+	return func(filename string, src []byte) ([]byte, error) {
+		return imports.Process(filename, src, &imports.Options{
+			TabWidth:  8,
+			AllErrors: allErrors,
+			TabIndent: true,
+			Comments:  true,
+			Fragment:  true,
+		})
+	}
 }
 
 func isGoFile(fi os.FileInfo) bool {

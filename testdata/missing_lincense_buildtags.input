@@ -1,0 +1,4 @@
+// +build test
+package abc
+
+func def() {}

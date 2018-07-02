@@ -1,0 +1,8 @@
+// License header line 1
+// License header line 2
+
+// Doc line 1
+// Doc line 2
+package abc
+
+func def() {}

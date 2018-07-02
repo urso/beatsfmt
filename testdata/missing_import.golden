@@ -1,0 +1,10 @@
+// License header line 1
+// License header line 2
+
+package test
+
+import "fmt"
+
+func main() {
+	fmt.Println("Hello World!")
+}

@@ -1,0 +1,7 @@
+// License header line 1
+// License header line 2
+
+// +build test
+package abc
+
+func def() {}
