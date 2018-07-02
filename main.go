@@ -18,12 +18,13 @@ import (
 )
 
 type settings struct {
-	license   string
-	srcDir    string
-	overwrite bool
-	allErrors bool
-	diff      bool
-	list      bool
+	license      string
+	licSearchCWD bool
+	srcDir       string
+	overwrite    bool
+	allErrors    bool
+	diff         bool
+	list         bool
 }
 
 type formatter func(string, []byte) ([]byte, error)
@@ -46,7 +47,7 @@ func main() {
 	flag.BoolVar(&settings.overwrite, "w", false, "write result to source file instead of stdout")
 	flag.StringVar(&settings.srcDir, "srcdir", "", "choose imports as if source code is from `dir`")
 	flag.StringVar(&settings.license, "license", "", "set source header license file")
-
+	flag.BoolVar(&settings.licSearchCWD, "licwd", false, "search license file beginning in current working directory")
 	flag.Usage = usage
 	flag.Parse()
 	paths := flag.Args()
@@ -88,19 +89,40 @@ func processFile(
 	stdin bool,
 ) error {
 
+	target := filename
+	if dir := settings.srcDir; dir != "" {
+		// if srcdir is file name, use the name.
+		if isFile(dir) || (!isDir(dir) && strings.HasSuffix(dir, ".go")) {
+			target = dir
+		} else {
+			target = filepath.Join(dir, filepath.Base(filename))
+		}
+	}
+
 	if settings.license == "" {
 		// let's find one
 		root, _ := filepath.Abs(os.Getenv("GOPATH"))
-		abs, err := filepath.Abs(filename)
-		if err != nil {
-			return err
+		var start string
+		if settings.licSearchCWD {
+			var err error
+			start, err = filepath.Abs(".")
+			if err != nil {
+				return err
+			}
+		} else {
+			var err error
+			start, err = filepath.Abs(target)
+			if err != nil {
+				return err
+			}
 		}
 
 		if root == "" {
 			root = "."
 		}
-		dir := filepath.Dir(abs)
-		for dir != root {
+
+		dir := filepath.Dir(start)
+		for dir != root && dir != "/" {
 			license := filepath.Join(dir, licenseFileName)
 			fi, err := os.Stat(license)
 			if err == nil && fi.Mode().IsRegular() {
@@ -112,13 +134,6 @@ func processFile(
 	}
 
 	var formatters []formatter
-
-	/*
-		var formatters = []formatter{
-			licenseHeader(ESLicenseHeader),
-			formatSource(settings.allErrors),
-		}
-	*/
 
 	if settings.license != "" {
 		contents, err := ioutil.ReadFile(settings.license)
@@ -142,11 +157,6 @@ func processFile(
 	src, err := ioutil.ReadAll(in)
 	if err != nil {
 		return err
-	}
-
-	target := filename
-	if dir := settings.srcDir; dir != "" {
-		target = filepath.Join(dir, filepath.Base(filename))
 	}
 
 	res, err := applyFormatters(formatters, target, src)
@@ -248,7 +258,17 @@ func formatSource(allErrors bool) func(string, []byte) ([]byte, error) {
 
 func isGoFile(fi os.FileInfo) bool {
 	name := fi.Name()
-	return !fi.IsDir() && !strings.HasPrefix(name, ".") && strings.HasSuffix(name, ".go")
+	return fi.Mode().IsRegular() && !strings.HasPrefix(name, ".") && strings.HasSuffix(name, ".go")
+}
+
+func isFile(name string) bool {
+	fi, err := os.Stat(name)
+	return err == nil && fi.Mode().IsRegular()
+}
+
+func isDir(name string) bool {
+	fi, err := os.Stat(name)
+	return err == nil && fi.IsDir()
 }
 
 func diff(old, new []byte) ([]byte, error) {
