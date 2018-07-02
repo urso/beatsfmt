@@ -41,6 +41,9 @@ func main() {
 	var settings settings
 	var exitCode int
 
+	// set goimports global
+	flag.StringVar(&imports.LocalPrefix, "local", "", "put imports beginning with this string after 3rd-party packages")
+
 	flag.BoolVar(&settings.list, "l", false, "list files whose formatting differs only")
 	flag.BoolVar(&settings.allErrors, "e", false, "report all errors (not just the first 10 error)")
 	flag.BoolVar(&settings.diff, "d", false, "display diff")
