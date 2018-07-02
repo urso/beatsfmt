@@ -18,6 +18,7 @@ import (
 )
 
 type settings struct {
+	license   string
 	srcDir    string
 	overwrite bool
 	allErrors bool
@@ -27,24 +28,7 @@ type settings struct {
 
 type formatter func(string, []byte) ([]byte, error)
 
-var ESLicenseHeader = []string{
-	`// Licensed to Elasticsearch B.V. under one or more contributor`,
-	`// license agreements. See the NOTICE file distributed with`,
-	`// this work for additional information regarding copyright`,
-	`// ownership. Elasticsearch B.V. licenses this file to you under`,
-	`// the Apache License, Version 2.0 (the "License"); you may`,
-	`// not use this file except in compliance with the License.`,
-	`// You may obtain a copy of the License at`,
-	`//`,
-	`//     http://www.apache.org/licenses/LICENSE-2.0`,
-	`//`,
-	`// Unless required by applicable law or agreed to in writing,`,
-	`// software distributed under the License is distributed on an`,
-	`// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY`,
-	`// KIND, either express or implied.  See the License for the`,
-	`// specific language governing permissions and limitations`,
-	`// under the License.`,
-}
+const licenseFileName = ".go_license_header"
 
 func usage() {
 	fmt.Fprintf(os.Stderr, "usage: beatfmt [flags] [path ...]\n")
@@ -61,6 +45,7 @@ func main() {
 	flag.BoolVar(&settings.diff, "d", false, "display diff")
 	flag.BoolVar(&settings.overwrite, "w", false, "write result to source file instead of stdout")
 	flag.StringVar(&settings.srcDir, "srcdir", "", "choose imports as if source code is from `dir`")
+	flag.StringVar(&settings.license, "license", "", "set source header license file")
 
 	flag.Usage = usage
 	flag.Parse()
@@ -102,10 +87,48 @@ func processFile(
 	out io.Writer,
 	stdin bool,
 ) error {
-	var formatters = []formatter{
-		licenseHeader(ESLicenseHeader),
-		formatSource(settings.allErrors),
+
+	if settings.license == "" {
+		// let's find one
+		root, _ := filepath.Abs(os.Getenv("GOPATH"))
+		abs, err := filepath.Abs(filename)
+		if err != nil {
+			return err
+		}
+
+		if root == "" {
+			root = "."
+		}
+		dir := filepath.Dir(abs)
+		for dir != root {
+			license := filepath.Join(dir, licenseFileName)
+			fi, err := os.Stat(license)
+			if err == nil && fi.Mode().IsRegular() {
+				settings.license = license
+				break
+			}
+			dir = filepath.Dir(dir)
+		}
 	}
+
+	var formatters []formatter
+
+	/*
+		var formatters = []formatter{
+			licenseHeader(ESLicenseHeader),
+			formatSource(settings.allErrors),
+		}
+	*/
+
+	if settings.license != "" {
+		contents, err := ioutil.ReadFile(settings.license)
+		if err != nil {
+			return err
+		}
+
+		formatters = append(formatters, licenseHeader(strings.Split(string(contents), "\n")))
+	}
+	formatters = append(formatters, formatSource(settings.allErrors))
 
 	if in == nil {
 		f, err := os.Open(filename)
