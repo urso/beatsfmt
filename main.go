@@ -30,6 +30,7 @@ type settings struct {
 type formatter func(string, []byte) ([]byte, error)
 
 const licenseFileName = ".go_license_header"
+const xpackLicenseFileName = ".go_xpack_license_header"
 
 func usage() {
 	fmt.Fprintf(os.Stderr, "usage: beatfmt [flags] [path ...]\n")
@@ -124,14 +125,21 @@ func processFile(
 			root = "."
 		}
 
+		licenseType := licenseFileName
+
 		dir := filepath.Dir(start)
 		for dir != root && dir != "/" {
-			license := filepath.Join(dir, licenseFileName)
+			if filepath.Base(dir) == "x-pack" {
+				licenseType = xpackLicenseFileName
+			}
+
+			license := filepath.Join(dir, licenseType)
 			fi, err := os.Stat(license)
 			if err == nil && fi.Mode().IsRegular() {
 				settings.license = license
 				break
 			}
+
 			dir = filepath.Dir(dir)
 		}
 	}
